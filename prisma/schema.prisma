@@ -1,0 +1,165 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum UserRole {
+  OWNER
+  EMPLOYEE
+}
+
+enum UserStatus {
+  PENDING
+  ACTIVE
+  SUSPENDED
+  BLOCKED
+}
+
+enum SubstationStatus {
+  ACTIVE
+  INACTIVE
+}
+
+enum ActivityType {
+  LOGIN
+  SWAP_CREATED
+  EMPLOYEE_CREATED
+  EMPLOYEE_ASSIGNED
+  EMPLOYEE_UNASSIGNED
+  EMPLOYEE_STATUS_CHANGED
+  EMPLOYEE_PASSWORD_RESET
+  SUBSTATION_CREATED
+  SUBSTATION_UPDATED
+  REPORT_EXPORTED
+  IMAGE_ANALYZED
+}
+
+model Organization {
+  id           String        @id @default(cuid())
+  businessName String
+  email        String        @unique
+  phone        String?
+  location     String?
+  createdAt    DateTime      @default(now()) @db.Timestamptz(3)
+  updatedAt    DateTime      @updatedAt @db.Timestamptz(3)
+  users        User[]
+  substations  Substation[]
+  swaps        Swap[]
+  activities   ActivityLog[]
+}
+
+model ActivityLog {
+  id             String       @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  userId         String?
+  user           User?        @relation(fields: [userId], references: [id], onDelete: SetNull)
+  substationId   String?
+  substation     Substation?  @relation(fields: [substationId], references: [id], onDelete: SetNull)
+  type           ActivityType
+  description    String
+  metadata       Json?
+  ipAddress      String?
+  createdAt      DateTime     @default(now()) @db.Timestamptz(3)
+
+  @@index([organizationId, createdAt])
+  @@index([userId])
+  @@index([substationId])
+}
+
+model User {
+  id             String       @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  substationId   String?
+  substation     Substation?  @relation(fields: [substationId], references: [id], onDelete: SetNull)
+  role           UserRole
+  status         UserStatus   @default(PENDING)
+  name           String
+  email          String       @unique
+  passwordHash   String
+  phone          String?
+  emailVerified  Boolean      @default(false)
+  otpCode        String?
+  otpExpiresAt   DateTime?    @db.Timestamptz(3)
+  lastLoginAt    DateTime?    @db.Timestamptz(3)
+  createdAt      DateTime     @default(now()) @db.Timestamptz(3)
+  updatedAt      DateTime     @updatedAt @db.Timestamptz(3)
+  swapsCreated   Swap[]        @relation("SwapEmployee")
+  activities     ActivityLog[]
+
+  @@index([organizationId])
+  @@index([substationId])
+}
+
+model Substation {
+  id             String           @id @default(cuid())
+  organizationId String
+  organization   Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  name           String
+  code           String
+  location       String?
+  status         SubstationStatus @default(ACTIVE)
+  createdAt      DateTime         @default(now()) @db.Timestamptz(3)
+  updatedAt      DateTime         @updatedAt @db.Timestamptz(3)
+  employees      User[]
+  swaps          Swap[]
+  activities     ActivityLog[]
+
+  @@unique([organizationId, code])
+  @@index([organizationId])
+}
+
+/// Global battery registry — not owned by any substation
+model Battery {
+  id        String   @id @default(cuid())
+  barcode   String   @unique
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+}
+
+/// Global vehicle registry — can swap at any substation nationwide
+model Vehicle {
+  id           String   @id @default(cuid())
+  registration String   @unique
+  createdAt    DateTime @default(now()) @db.Timestamptz(3)
+  swaps        Swap[]
+}
+
+model Swap {
+  id               String       @id @default(cuid())
+  organizationId   String
+  organization     Organization @relation(fields: [organizationId], references: [id])
+  substationId     String
+  substation       Substation   @relation(fields: [substationId], references: [id])
+  employeeId       String
+  employee         User         @relation("SwapEmployee", fields: [employeeId], references: [id])
+  vehicleId        String?
+  vehicle          Vehicle?     @relation(fields: [vehicleId], references: [id])
+  tukTukReg        String
+  incomingBarcode  String
+  incomingPct      Int
+  outgoingBarcode  String
+  outgoingPct      Int
+  netPercent       Int
+  totalCharged     Decimal      @db.Decimal(12, 2)
+  companyShare     Decimal      @db.Decimal(12, 2)
+  stationShare     Decimal      @db.Decimal(12, 2)
+  incomingImageUrl String?
+  outgoingImageUrl String?
+  ocrIncoming      Json?
+  ocrOutgoing      Json?
+  plateNumber      String?
+  notes            String?
+  swappedAt        DateTime     @default(now()) @db.Timestamptz(3)
+  createdAt        DateTime     @default(now()) @db.Timestamptz(3)
+
+  @@index([substationId, swappedAt])
+  @@index([organizationId, swappedAt])
+  @@index([tukTukReg])
+  @@index([incomingBarcode])
+  @@index([outgoingBarcode])
+}
