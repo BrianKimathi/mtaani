@@ -1,7 +1,0 @@
-uploads
-.env
-.env.*
-service.json
-../service.json
-prisma
-firebase-debug.log

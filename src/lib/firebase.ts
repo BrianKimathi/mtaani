@@ -16,9 +16,10 @@ function resolveServiceAccountPath(): string | undefined {
       ? configured
       : path.resolve(process.cwd(), configured);
   }
-  // Repo root service.json (when running from backend/)
+  // service.json at repo root (local or Vercel root directory ./)
   const candidates = [
     path.resolve(process.cwd(), 'service.json'),
+    path.resolve(process.cwd(), 'backend/service.json'),
     path.resolve(process.cwd(), '../service.json'),
     path.resolve(__dirname, '../../../service.json'),
   ];
