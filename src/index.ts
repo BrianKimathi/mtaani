@@ -1,4 +1,4 @@
-import 'dotenv/config';
+import './loadEnv.js';
 import app, { allowedOrigins } from './app.js';
 
 const PORT = Number(process.env.PORT ?? 4000);
