@@ -10,6 +10,8 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 export const RTDB_ROOT = process.env.FIREBASE_RTD_ROOT ?? 'bekye_swap';
 export const STORAGE_ROOT = process.env.FIREBASE_STORAGE_ROOT ?? 'bekye_swap';
 
+let initialized = false;
+
 function parseServiceAccountJson(raw: string): admin.ServiceAccount {
   const trimmed = raw.trim();
   const json =
@@ -43,11 +45,9 @@ function resolveServiceAccountPath(): string | undefined {
 }
 
 function loadServiceAccount(): admin.ServiceAccount {
-  // 1) Individual key/value env vars (preferred for Vercel)
   const fromKeys = serviceAccountFromEnv();
   if (fromKeys) return fromKeys;
 
-  // 2) Single-line JSON (optional)
   const fromEnv = process.env.FIREBASE_SERVICE_ACCOUNT_JSON;
   if (fromEnv) {
     try {
@@ -59,7 +59,6 @@ function loadServiceAccount(): admin.ServiceAccount {
     }
   }
 
-  // 3) Local file only (not on Vercel)
   const filePath = resolveServiceAccountPath();
   if (filePath) {
     try {
@@ -72,12 +71,12 @@ function loadServiceAccount(): admin.ServiceAccount {
   }
 
   throw new Error(
-    'Firebase credentials missing. Set FIREBASE_SA_PROJECT_ID, FIREBASE_SA_CLIENT_EMAIL, FIREBASE_SA_PRIVATE_KEY (and related FIREBASE_SA_* vars) in Vercel/env. Run: npm run env:sync-sa'
+    'Firebase credentials missing. On Vercel set FIREBASE_SA_PROJECT_ID, FIREBASE_SA_CLIENT_EMAIL, FIREBASE_SA_PRIVATE_KEY (run: npm run env:sync-sa locally).'
   );
 }
 
-function initApp(): admin.app.App {
-  if (admin.apps.length > 0) return admin.app();
+function ensureInit(): void {
+  if (initialized) return;
 
   const serviceAccount = loadServiceAccount();
   const projectId =
@@ -93,19 +92,27 @@ function initApp(): admin.app.App {
   const storageBucket =
     process.env.FIREBASE_STORAGE_BUCKET ?? `${projectId}.appspot.com`;
 
-  return admin.initializeApp({
+  admin.initializeApp({
     projectId,
     databaseURL,
     storageBucket,
     credential: admin.credential.cert(serviceAccount),
   });
+
+  initialized = true;
 }
 
-export const firebaseApp = initApp();
-export const rtdb = admin.database();
-export const storageBucket = admin.storage().bucket();
+export function getRtdb(): admin.database.Database {
+  ensureInit();
+  return admin.database();
+}
+
+export function getStorageBucket() {
+  ensureInit();
+  return admin.storage().bucket();
+}
 
 export function rtdbRef(subpath = ''): admin.database.Reference {
   const base = subpath ? `${RTDB_ROOT}/${subpath}` : RTDB_ROOT;
-  return rtdb.ref(base);
+  return getRtdb().ref(base);
 }

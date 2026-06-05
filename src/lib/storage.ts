@@ -1,6 +1,6 @@
 import path from 'path';
 import { randomBytes } from 'crypto';
-import { storageBucket, STORAGE_ROOT } from './firebase.js';
+import { getStorageBucket, STORAGE_ROOT } from './firebase.js';
 
 export async function uploadSwapImage(
   buffer: Buffer,
@@ -11,7 +11,8 @@ export async function uploadSwapImage(
   const filename = `${Date.now()}-${randomBytes(6).toString('hex')}${ext}`;
   // Isolated folder — does not touch other app files in the bucket
   const storagePath = `${STORAGE_ROOT}/swaps/${filename}`;
-  const file = storageBucket.file(storagePath);
+  const bucket = getStorageBucket();
+  const file = bucket.file(storagePath);
 
   await file.save(buffer, {
     metadata: {
@@ -23,7 +24,7 @@ export async function uploadSwapImage(
 
   await file.makePublic();
 
-  const imageUrl = `https://storage.googleapis.com/${storageBucket.name}/${encodeURI(storagePath)}`;
+  const imageUrl = `https://storage.googleapis.com/${bucket.name}/${encodeURI(storagePath)}`;
   return { imageUrl, filename, storagePath };
 }
 

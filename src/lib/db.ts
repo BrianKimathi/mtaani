@@ -1,4 +1,4 @@
-import { rtdb, rtdbRef, RTDB_ROOT } from './firebase.js';
+import { getRtdb, rtdbRef, RTDB_ROOT } from './firebase.js';
 import type {
   ActivityLog,
   ActivityType,
@@ -19,7 +19,7 @@ function nowIso(): string {
 }
 
 function newId(): string {
-  return rtdb.ref().push().key!;
+  return getRtdb().ref().push().key!;
 }
 
 /** RTDB keys cannot contain . @ # $ [ ] */
@@ -96,7 +96,7 @@ export async function createOrganizationWithOwner(input: {
     updatedAt: ts,
   };
 
-  await rtdb.ref().update({
+  await getRtdb().ref().update({
     [`${RTDB_ROOT}/organizations/${orgId}`]: orgData,
     [`${RTDB_ROOT}/users/${userId}`]: userData,
     [`${RTDB_ROOT}/users_by_email/${ek}`]: { userId },
@@ -177,7 +177,7 @@ export async function createEmployee(input: {
     updatedAt: ts,
   };
 
-  await rtdb.ref().update({
+  await getRtdb().ref().update({
     [`${RTDB_ROOT}/users/${id}`]: userData,
     [`${RTDB_ROOT}/users_by_email/${ek}`]: { userId: id },
   });
