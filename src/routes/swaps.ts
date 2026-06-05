@@ -2,6 +2,7 @@ import { Router } from 'express';
 import multer from 'multer';
 import path from 'path';
 import fs from 'fs';
+import os from 'os';
 import { z } from 'zod';
 import {
   countSwaps,
@@ -21,8 +22,16 @@ import { logActivity } from '../lib/activity.js';
 const router = Router();
 router.use(authMiddleware);
 
-const uploadDir = process.env.UPLOAD_DIR ?? './uploads';
-if (!fs.existsSync(uploadDir)) fs.mkdirSync(uploadDir, { recursive: true });
+const uploadDir =
+  process.env.UPLOAD_DIR ??
+  (process.env.VERCEL ? path.join(os.tmpdir(), 'bekye-uploads') : './uploads');
+if (!process.env.VERCEL) {
+  try {
+    if (!fs.existsSync(uploadDir)) fs.mkdirSync(uploadDir, { recursive: true });
+  } catch {
+    /* read-only FS on some hosts */
+  }
+}
 
 const memoryUpload = multer({
   storage: multer.memoryStorage(),
