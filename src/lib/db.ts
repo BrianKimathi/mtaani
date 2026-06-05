@@ -125,8 +125,11 @@ export async function getUserById(id: string): Promise<User | null> {
   return getRecord<User>('users', id);
 }
 
-export async function getUserWithRelations(id: string): Promise<User | null> {
-  const user = await getUserById(id);
+export async function getUserWithRelations(idOrEmail: string): Promise<User | null> {
+  const user =
+    idOrEmail.includes('@')
+      ? await getUserByEmail(idOrEmail)
+      : await getUserById(idOrEmail);
   if (!user) return null;
   user.organization = (await getOrganization(user.organizationId)) ?? undefined;
   if (user.substationId) {
