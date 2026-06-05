@@ -1,10 +1,13 @@
 import './lib/firebase.js';
 import express from 'express';
 import cors from 'cors';
-import helmet from 'helmet';
-import rateLimit from 'express-rate-limit';
 import path from 'path';
+import { createRequire } from 'node:module';
 import { fileURLToPath } from 'url';
+
+const require = createRequire(import.meta.url);
+const helmet = require('helmet') as typeof import('helmet').default;
+const rateLimit = require('express-rate-limit') as typeof import('express-rate-limit').default;
 import authRoutes from './routes/auth.js';
 import substationRoutes from './routes/substations.js';
 import employeeRoutes from './routes/employees.js';
