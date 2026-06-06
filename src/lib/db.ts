@@ -22,9 +22,19 @@ function newId(): string {
   return getRtdb().ref().push().key!;
 }
 
-/** RTDB keys cannot contain . @ # $ [ ] */
+/** RTDB path keys cannot contain . # $ [ ] (and @ for emails). */
+export function rtdbSafeKey(value: string): string {
+  return value
+    .replace(/\./g, '_dot_')
+    .replace(/@/g, '_at_')
+    .replace(/#/g, '_hash_')
+    .replace(/\$/g, '_dollar_')
+    .replace(/\[/g, '_lb_')
+    .replace(/\]/g, '_rb_');
+}
+
 export function emailKey(email: string): string {
-  return email.toLowerCase().replace(/\./g, '_dot_').replace(/@/g, '_at_');
+  return rtdbSafeKey(email.toLowerCase());
 }
 
 function num(v: unknown): number {
@@ -305,18 +315,20 @@ export async function updateSubstation(
 // ── Batteries & Vehicles ──
 
 export async function upsertBattery(barcode: string): Promise<void> {
-  const id = barcode.toUpperCase();
-  const ref = rtdbRef(`batteries/${id}`);
+  const normalized = barcode.toUpperCase().replace(/\s/g, '');
+  const key = rtdbSafeKey(normalized);
+  const ref = rtdbRef(`batteries/${key}`);
   const snap = await ref.once('value');
-  if (!snap.exists()) await ref.set({ barcode: id, createdAt: nowIso() });
+  if (!snap.exists()) await ref.set({ barcode: normalized, createdAt: nowIso() });
 }
 
 export async function upsertVehicle(registration: string): Promise<{ id: string }> {
-  const id = registration.toUpperCase().replace(/\s+/g, ' ').trim();
-  const ref = rtdbRef(`vehicles/${id}`);
+  const normalized = registration.toUpperCase().replace(/\s+/g, ' ').trim();
+  const key = rtdbSafeKey(normalized);
+  const ref = rtdbRef(`vehicles/${key}`);
   const snap = await ref.once('value');
-  if (!snap.exists()) await ref.set({ registration: id, createdAt: nowIso() });
-  return { id };
+  if (!snap.exists()) await ref.set({ registration: normalized, createdAt: nowIso() });
+  return { id: normalized };
 }
 
 // ── Swaps ──
