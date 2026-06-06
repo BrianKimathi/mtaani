@@ -9,6 +9,7 @@ import {
   updateUser,
 } from '../lib/db.js';
 import { sendOtpEmail, generateOtp } from '../lib/email.js';
+import { createFirebaseCustomToken } from '../lib/firebase.js';
 import { signToken, authMiddleware } from '../middleware/auth.js';
 import { logActivity } from '../lib/activity.js';
 import { assertEmailAvailable } from '../lib/emailUnique.js';
@@ -188,8 +189,11 @@ router.post('/login', async (req, res) => {
     metadata: { email: user.email, role: user.role },
   });
 
+  const firebaseToken = await createFirebaseCustomToken(user.id);
+
   res.json({
     token,
+    firebaseToken,
     user: {
       id: user.id,
       name: user.name,
@@ -214,7 +218,8 @@ router.get('/me', authMiddleware, async (req, res) => {
     return;
   }
   const { passwordHash: _, otpCode: __, ...safe } = user;
-  res.json({ user: safe });
+  const firebaseToken = await createFirebaseCustomToken(user.id);
+  res.json({ user: safe, firebaseToken });
 });
 
 export default router;

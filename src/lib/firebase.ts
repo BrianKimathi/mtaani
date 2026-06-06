@@ -116,3 +116,9 @@ export function rtdbRef(subpath = ''): admin.database.Reference {
   const base = subpath ? `${RTDB_ROOT}/${subpath}` : RTDB_ROOT;
   return getRtdb().ref(base);
 }
+
+/** Lets mobile sign into Firebase Auth after backend login (RTDB access). */
+export async function createFirebaseCustomToken(uid: string): Promise<string> {
+  ensureInit();
+  return admin.auth().createCustomToken(uid);
+}
