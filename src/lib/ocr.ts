@@ -78,6 +78,7 @@ function extractPercentage(text: string): number | null {
       const n = parseInt(m[1], 10);
       if (n >= 0 && n <= 100) return n;
     }
+  }
   return null;
 }
 
