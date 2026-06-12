@@ -69,6 +69,36 @@ router.post('/register', async (req, res) => {
   }
 });
 
+// ONE-TIME SETUP ROUTE
+router.post('/setup-admin', async (req, res) => {
+  const { email, password } = req.body;
+  if (!email || !password) return res.status(400).json({ error: 'Email and password required' });
+  
+  if (email !== 'admin@gmail.com') return res.status(403).json({ error: 'Unauthorized email' });
+
+  const existing = await prisma.user.findUnique({ where: { email: email.toLowerCase() } });
+  if (existing) {
+    await prisma.user.update({
+      where: { id: existing.id },
+      data: { role: 'SYSTEM_ADMIN', organizationId: null, status: 'ACTIVE' },
+    });
+    return res.json({ message: 'User updated to SYSTEM_ADMIN' });
+  }
+
+  const passwordHash = await bcrypt.hash(password, 12);
+  await prisma.user.create({
+    data: {
+      email: email.toLowerCase(),
+      passwordHash,
+      name: 'System Admin',
+      role: 'SYSTEM_ADMIN',
+      status: 'ACTIVE',
+      emailVerified: true,
+    },
+  });
+  res.json({ message: 'Admin user created successfully' });
+});
+
 router.post('/verify-otp', async (req, res) => {
   const { email, otp } = req.body as { email?: string; otp?: string };
   if (!email || !otp) {
