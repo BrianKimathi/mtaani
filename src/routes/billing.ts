@@ -1,6 +1,14 @@
 import { Router } from 'express';
 import { z } from 'zod';
-import { prisma } from '../lib/prisma.js';
+import {
+  getSystemSetting,
+  listOrganizationsWithStats,
+  countSwaps,
+  upsertBill,
+  listBills,
+  getBill,
+  updateBill
+} from '../lib/db.js';
 import { authMiddleware, requireOwner } from '../middleware/auth.js';
 
 const router = Router();
@@ -19,49 +27,33 @@ router.post('/generate', async (req, res) => {
       year: z.number().min(2020),
     }).parse(req.body);
 
-    const systemSetting = await prisma.systemSetting.findUnique({ where: { key: 'CHARGE_PER_SWAP' } });
+    const systemSetting = await getSystemSetting('CHARGE_PER_SWAP');
     const chargePerSwap = systemSetting ? Number(systemSetting.value) : 5;
 
     // Get all orgs
-    const orgs = await prisma.organization.findMany();
+    const orgs = await listOrganizationsWithStats();
     let generated = 0;
 
     for (const org of orgs) {
       const startDate = new Date(year, month - 1, 1);
       const endDate = new Date(year, month, 1); // first day of next month
 
-      const swapCount = await prisma.swap.count({
-        where: {
-          organizationId: org.id,
-          swappedAt: {
-            gte: startDate,
-            lt: endDate,
-          },
-        },
+      const swapCount = await countSwaps({
+        organizationId: org.id,
+        swappedAtGte: startDate,
+        swappedAtLte: endDate,
       });
 
       if (swapCount > 0) {
         const amount = swapCount * chargePerSwap;
         
         // due date is 5th of next month
-        const dueDate = new Date(year, month, 5);
+        const dueDate = new Date(year, month, 5).toISOString();
 
-        await prisma.bill.upsert({
-          where: {
-            organizationId_month_year: { organizationId: org.id, month, year },
-          },
-          update: {
-            swapCount,
-            amount,
-          },
-          create: {
-            organizationId: org.id,
-            month,
-            year,
-            swapCount,
-            amount,
-            dueDate,
-          },
+        await upsertBill(org.id, month, year, {
+          swapCount,
+          amount,
+          dueDate,
         });
         generated++;
       }
@@ -85,12 +77,7 @@ router.get('/', async (req, res) => {
       return;
     }
 
-    const bills = await prisma.bill.findMany({
-      where: orgId ? { organizationId: orgId } : {},
-      include: isAdmin ? { organization: { select: { businessName: true } } } : undefined,
-      orderBy: [{ year: 'desc' }, { month: 'desc' }],
-    });
-
+    const bills = await listBills({ organizationId: orgId });
     res.json({ bills });
   } catch (error) {
     res.status(500).json({ error: 'Failed to fetch bills' });
@@ -102,7 +89,7 @@ router.post('/:id/pay', requireOwner, async (req, res) => {
   try {
     const { mpesaPhone } = z.object({ mpesaPhone: z.string().min(10) }).parse(req.body);
     
-    const bill = await prisma.bill.findUnique({ where: { id: req.params.id as string } });
+    const bill = await getBill(req.params.id as string);
     if (!bill || bill.organizationId !== req.user?.organizationId) {
       res.status(404).json({ error: 'Bill not found' });
       return;
@@ -116,13 +103,10 @@ router.post('/:id/pay', requireOwner, async (req, res) => {
     // MOCK MPESA PAYMENT - In real life, trigger STK Push, wait for callback
     const receipt = 'MP' + Math.random().toString(36).substring(2, 10).toUpperCase();
 
-    const updated = await prisma.bill.update({
-      where: { id: bill.id },
-      data: {
-        status: 'PAID',
-        paidAt: new Date(),
-        mpesaReceipt: receipt,
-      },
+    const updated = await updateBill(bill.id, {
+      status: 'PAID',
+      paidAt: new Date().toISOString(),
+      mpesaReceipt: receipt,
     });
 
     res.json({ message: 'Payment successful', bill: updated });

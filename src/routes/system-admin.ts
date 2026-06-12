@@ -1,6 +1,14 @@
 import { Router } from 'express';
 import { z } from 'zod';
-import { prisma } from '../lib/prisma.js';
+import {
+  countOrganizations,
+  countAllSwaps,
+  getSystemSetting,
+  upsertSystemSetting,
+  listOrganizationsWithStats,
+  updateOrganizationStatus,
+  listAllUsers
+} from '../lib/db.js';
 import { authMiddleware, requireSystemAdmin } from '../middleware/auth.js';
 
 const router = Router();
@@ -9,9 +17,9 @@ router.use(authMiddleware, requireSystemAdmin);
 // Get dashboard stats
 router.get('/analytics', async (req, res) => {
   try {
-    const orgsCount = await prisma.organization.count();
-    const swapsCount = await prisma.swap.count();
-    const systemSetting = await prisma.systemSetting.findUnique({ where: { key: 'CHARGE_PER_SWAP' } });
+    const orgsCount = await countOrganizations();
+    const swapsCount = await countAllSwaps();
+    const systemSetting = await getSystemSetting('CHARGE_PER_SWAP');
     const chargePerSwap = systemSetting ? Number(systemSetting.value) : 5;
     const totalExpectedRevenue = swapsCount * chargePerSwap;
 
@@ -30,11 +38,7 @@ router.get('/analytics', async (req, res) => {
 router.put('/settings', async (req, res) => {
   try {
     const { chargePerSwap } = z.object({ chargePerSwap: z.number().positive() }).parse(req.body);
-    await prisma.systemSetting.upsert({
-      where: { key: 'CHARGE_PER_SWAP' },
-      update: { value: chargePerSwap.toString() },
-      create: { key: 'CHARGE_PER_SWAP', value: chargePerSwap.toString() },
-    });
+    await upsertSystemSetting('CHARGE_PER_SWAP', chargePerSwap.toString());
     res.json({ message: 'Settings updated successfully' });
   } catch (error) {
     res.status(400).json({ error: 'Invalid settings data' });
@@ -44,14 +48,7 @@ router.put('/settings', async (req, res) => {
 // Get all organizations with basic stats
 router.get('/organizations', async (req, res) => {
   try {
-    const orgs = await prisma.organization.findMany({
-      include: {
-        _count: {
-          select: { users: true, substations: true, swaps: true, bills: true },
-        },
-      },
-      orderBy: { createdAt: 'desc' },
-    });
+    const orgs = await listOrganizationsWithStats();
     res.json({ organizations: orgs });
   } catch (error) {
     res.status(500).json({ error: 'Failed to fetch organizations' });
@@ -62,10 +59,7 @@ router.get('/organizations', async (req, res) => {
 router.put('/organizations/:id/status', async (req, res) => {
   try {
     const { status } = z.object({ status: z.enum(['ACTIVE', 'SUSPENDED', 'BLOCKED']) }).parse(req.body);
-    const org = await prisma.organization.update({
-      where: { id: req.params.id },
-      data: { status },
-    });
+    const org = await updateOrganizationStatus(req.params.id, status);
     res.json({ organization: org });
   } catch (error) {
     res.status(400).json({ error: 'Failed to update status' });
@@ -76,17 +70,9 @@ router.put('/organizations/:id/status', async (req, res) => {
 router.get('/users', async (req, res) => {
   try {
     const { organizationId, substationId } = req.query;
-    const users = await prisma.user.findMany({
-      where: {
-        ...(organizationId && typeof organizationId === 'string' ? { organizationId } : {}),
-        ...(substationId && typeof substationId === 'string' ? { substationId } : {}),
-        role: { not: 'SYSTEM_ADMIN' },
-      },
-      include: {
-        organization: { select: { businessName: true } },
-        substation: { select: { name: true } },
-      },
-      orderBy: { createdAt: 'desc' },
+    const users = await listAllUsers({
+      organizationId: typeof organizationId === 'string' ? organizationId : undefined,
+      substationId: typeof substationId === 'string' ? substationId : undefined,
     });
     res.json({ users });
   } catch (error) {

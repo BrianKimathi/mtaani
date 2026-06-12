@@ -78,14 +78,6 @@ function extractPercentage(text: string): number | null {
       const n = parseInt(m[1], 10);
       if (n >= 0 && n <= 100) return n;
     }
-  }
-  const nums = text.match(/\b(\d{1,3})\b/g);
-  if (nums) {
-    const candidates = nums.map(Number).filter((n) => n >= 1 && n <= 100);
-    if (candidates.length === 1) return candidates[0];
-    const likely = candidates.find((n) => n <= 99 && n !== 0);
-    if (likely) return likely;
-  }
   return null;
 }
 

@@ -12,6 +12,9 @@ import type {
   UserStatus,
   Expense,
   ExpenseFilters,
+  Bill,
+  BillStatus,
+  SystemSetting,
 } from './types.js';
 
 // ── Helpers ──
@@ -124,6 +127,41 @@ export async function getOrganization(id: string): Promise<Organization | null> 
   return getRecord<Organization>('organizations', id);
 }
 
+export async function countOrganizations(): Promise<number> {
+  const all = await getAllRecords<Organization>('organizations');
+  return all.length;
+}
+
+export async function countAllSwaps(): Promise<number> {
+  const all = await getAllRecords<Swap>('swaps');
+  return all.length;
+}
+
+export async function listOrganizationsWithStats(): Promise<Organization[]> {
+  const allOrgs = await getAllRecords<Organization>('organizations');
+  const allUsers = await getAllRecords<User>('users');
+  const allSubs = await getAllRecords<Substation>('substations');
+  const allSwaps = await getAllRecords<Swap>('swaps');
+  const allBills = await getAllRecords<Bill>('bills');
+  
+  return allOrgs.sort((a, b) => b.createdAt.localeCompare(a.createdAt)).map(org => {
+    return {
+      ...org,
+      _count: {
+        users: allUsers.filter(u => u.organizationId === org.id).length,
+        substations: allSubs.filter(s => s.organizationId === org.id).length,
+        swaps: allSwaps.filter(s => s.organizationId === org.id).length,
+        bills: allBills.filter(b => b.organizationId === org.id).length,
+      }
+    };
+  });
+}
+
+export async function updateOrganizationStatus(id: string, status: string): Promise<Organization | null> {
+  await rtdbRef(`organizations/${id}`).update({ status, updatedAt: nowIso() });
+  return getOrganization(id);
+}
+
 // ── Users ──
 
 export async function getUserByEmail(email: string): Promise<User | null> {
@@ -135,6 +173,45 @@ export async function getUserByEmail(email: string): Promise<User | null> {
 
 export async function getUserById(id: string): Promise<User | null> {
   return getRecord<User>('users', id);
+}
+
+export async function listAllUsers(filters?: { organizationId?: string; substationId?: string }): Promise<User[]> {
+  let all = await getAllRecords<User>('users');
+  all = all.filter(u => u.role !== 'SYSTEM_ADMIN');
+  if (filters?.organizationId) all = all.filter(u => u.organizationId === filters.organizationId);
+  if (filters?.substationId) all = all.filter(u => u.substationId === filters.substationId);
+  
+  for (const u of all) {
+    if (u.organizationId) {
+      const org = await getOrganization(u.organizationId);
+      if (org) u.organization = { id: org.id, businessName: org.businessName } as any;
+    }
+    if (u.substationId) {
+      const sub = await getSubstation(u.substationId);
+      if (sub) u.substation = { id: sub.id, name: sub.name, code: sub.code } as any;
+    }
+  }
+  return all.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+}
+
+export async function createAdminUser(email: string, passwordHash: string): Promise<void> {
+  const emailLower = email.toLowerCase();
+  const id = newId();
+  const ts = nowIso();
+  const userData: Omit<User, 'id'> = {
+    role: 'SYSTEM_ADMIN',
+    status: 'ACTIVE',
+    name: 'System Admin',
+    email: emailLower,
+    passwordHash,
+    emailVerified: true,
+    createdAt: ts,
+    updatedAt: ts,
+  };
+  await getRtdb().ref().update({
+    [`${RTDB_ROOT}/users/${id}`]: userData,
+    [`${RTDB_ROOT}/users_by_email/${emailKey(emailLower)}`]: { userId: id },
+  });
 }
 
 export async function getUserWithRelations(idOrEmail: string): Promise<User | null> {
@@ -608,4 +685,81 @@ export async function aggregateExpenses(filters: ExpenseFilters): Promise<number
   const all = await getAllRecords<Expense>('expenses');
   const expenses = filterExpenses(all, filters);
   return expenses.reduce((sum, e) => sum + num(e.amount), 0);
+}
+
+// ── System Settings ──
+
+export async function getSystemSetting(key: string): Promise<SystemSetting | null> {
+  const snap = await rtdbRef(`system_settings/${key}`).once('value');
+  if (!snap.exists()) return null;
+  return { key, value: snap.val().value };
+}
+
+export async function upsertSystemSetting(key: string, value: string): Promise<void> {
+  await rtdbRef(`system_settings/${key}`).set({ value });
+}
+
+// ── Bills ──
+
+export async function upsertBill(organizationId: string, month: number, year: number, data: Partial<Bill>): Promise<Bill> {
+  const all = await getAllRecords<Bill>('bills');
+  const existing = all.find(b => b.organizationId === organizationId && b.month === month && b.year === year);
+  
+  const id = existing ? existing.id : newId();
+  const ts = nowIso();
+  
+  const record: Partial<Bill> = {
+    ...data,
+    organizationId,
+    month,
+    year,
+    updatedAt: ts,
+  };
+  
+  if (!existing) {
+    record.createdAt = ts;
+    if (!record.status) record.status = 'PENDING';
+  }
+  
+  const finalRecord = stripUndefined(record as Record<string, unknown>);
+  await rtdbRef(`bills/${id}`).update(finalRecord);
+  
+  return (await getRecord<Bill>('bills', id))!;
+}
+
+export async function getBill(id: string): Promise<Bill | null> {
+  return getRecord<Bill>('bills', id);
+}
+
+export async function listBills(filters?: { organizationId?: string }): Promise<Bill[]> {
+  const all = await getAllRecords<Bill>('bills');
+  let bills = all;
+  if (filters?.organizationId) bills = bills.filter(b => b.organizationId === filters.organizationId);
+  
+  for (const b of bills) {
+    if (b.organizationId) {
+      const org = await getOrganization(b.organizationId);
+      if (org) b.organization = { businessName: org.businessName };
+    }
+  }
+  
+  return bills.sort((a, b) => {
+    if (a.year !== b.year) return b.year - a.year;
+    return b.month - a.month;
+  });
+}
+
+export async function countBills(organizationId: string, status?: BillStatus): Promise<number> {
+  const all = await getAllRecords<Bill>('bills');
+  return all.filter(b => b.organizationId === organizationId && (!status || b.status === status)).length;
+}
+
+export async function updateBill(id: string, data: Partial<Bill>): Promise<Bill | null> {
+  const patch: Record<string, unknown> = { updatedAt: nowIso() };
+  for (const [k, v] of Object.entries(data)) {
+    if (k === 'id' || k === 'organization') continue;
+    patch[k] = v === undefined ? null : v;
+  }
+  await rtdbRef(`bills/${id}`).update(patch);
+  return getRecord<Bill>('bills', id);
 }

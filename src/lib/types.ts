@@ -138,3 +138,26 @@ export interface ExpenseFilters {
   dateGte?: Date;
   dateLte?: Date;
 }
+
+export interface SystemSetting {
+  key: string;
+  value: string;
+}
+
+export type BillStatus = 'PENDING' | 'PAID' | 'OVERDUE';
+
+export interface Bill {
+  id: string;
+  organizationId: string;
+  month: number;
+  year: number;
+  swapCount: number;
+  amount: number;
+  dueDate: string;
+  status: BillStatus;
+  paidAt?: string | null;
+  mpesaReceipt?: string | null;
+  createdAt: string;
+  updatedAt: string;
+  organization?: { businessName: string };
+}

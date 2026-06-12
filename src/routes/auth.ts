@@ -7,8 +7,9 @@ import {
   getUserByEmail,
   getUserWithRelations,
   updateUser,
+  createAdminUser,
+  countBills,
 } from '../lib/db.js';
-import { prisma } from '../lib/prisma.js';
 import { sendOtpEmail, generateOtp } from '../lib/email.js';
 import { createFirebaseCustomToken } from '../lib/firebase.js';
 import { signToken, authMiddleware } from '../middleware/auth.js';
@@ -76,26 +77,14 @@ router.post('/setup-admin', async (req, res) => {
   
   if (email !== 'admin@gmail.com') return res.status(403).json({ error: 'Unauthorized email' });
 
-  const existing = await prisma.user.findUnique({ where: { email: email.toLowerCase() } });
+  const existing = await getUserByEmail(email);
   if (existing) {
-    await prisma.user.update({
-      where: { id: existing.id },
-      data: { role: 'SYSTEM_ADMIN', organizationId: null, status: 'ACTIVE' },
-    });
+    await updateUser(existing.id, { role: 'SYSTEM_ADMIN', organizationId: null, status: 'ACTIVE' });
     return res.json({ message: 'User updated to SYSTEM_ADMIN' });
   }
 
   const passwordHash = await bcrypt.hash(password, 12);
-  await prisma.user.create({
-    data: {
-      email: email.toLowerCase(),
-      passwordHash,
-      name: 'System Admin',
-      role: 'SYSTEM_ADMIN',
-      status: 'ACTIVE',
-      emailVerified: true,
-    },
-  });
+  await createAdminUser(email, passwordHash);
   res.json({ message: 'Admin user created successfully' });
 });
 
@@ -224,9 +213,7 @@ router.post('/login', async (req, res) => {
 
   let hasOverdueBills = false;
   if (user.role === 'OWNER' && user.organizationId) {
-    const count = await prisma.bill.count({
-      where: { organizationId: user.organizationId, status: 'OVERDUE' },
-    });
+    const count = await countBills(user.organizationId, 'OVERDUE');
     hasOverdueBills = count > 0;
   }
 
@@ -263,9 +250,7 @@ router.get('/me', authMiddleware, async (req, res) => {
 
   let hasOverdueBills = false;
   if (user.role === 'OWNER' && user.organizationId) {
-    const count = await prisma.bill.count({
-      where: { organizationId: user.organizationId, status: 'OVERDUE' },
-    });
+    const count = await countBills(user.organizationId, 'OVERDUE');
     hasOverdueBills = count > 0;
   }
 
