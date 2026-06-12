@@ -57,6 +57,10 @@ function decodeQrFromImage(data: Uint8ClampedArray, width: number, height: numbe
 
 function extractBarcode(text: string, qr: string | null): string | null {
   if (qr) {
+    const parts = qr.split('#');
+    if (parts.length >= 2 && parts[0].toUpperCase().startsWith('BTR')) {
+      return `${parts[0]}-${parts[1]}`.toUpperCase();
+    }
     const normalized = qr.toUpperCase().replace(/\s/g, '');
     if (normalized.length >= 4) return normalized;
   }
